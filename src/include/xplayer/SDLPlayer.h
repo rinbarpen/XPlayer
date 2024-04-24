@@ -1,16 +1,16 @@
 #pragma once
 
-#include <string>
-#include <memory>
-#include <mutex>
-#include <condition_variable>
 #include "xplayer/Player.h"
+#include "xplayer/AVAudioBuffer.h"
 #include "xplayer/AVThread.h"
-#include "xplayer//AVQueue.h"
+#include "xplayer/AVQueue.h"
 #include "xplayer/Resampler.h"
 #include "xplayer/Converter.h"
+#include "xplayer/AVClock.h"
 
 #include "SDL2/SDL.h"
+#include "SDL2/SDL_audio.h"
+#include <memory>
 
 // TODO: 使用 error_ 记录错误信息，支持音视频流同步播放，解决内存泄露问题
 class SDLPlayer : public Player {
@@ -40,60 +40,88 @@ public:
   int64_t getTotalTime() const override;
 
   std::string lastError() const { return error_; }
-
   std::string dump() const;
+
+  bool isAVStreamBoth() const { return enable_video_ && enable_audio_; }
+  bool isVideoStreamOnly() const { return enable_video_ && !enable_audio_; }
+  bool isAudioStreamOnly() const { return !enable_video_ && enable_audio_; }
 
 private:
   bool checkConfig();
   bool expect(bool condition, const std::string &error);
 
-  void onSDLVideoPlay();
+  void onPlay();
+  void onReadFrame();
   void onSDLAudioPlay(Uint8 *stream, int len);
+  void onSDLVideoPlay();
+  void onAudioDecodeFrame();
+  void onVideoDecodeFrame();
+
+  void videoDelay();
+
+  void onPauseToggle();
 
   static SDL_PixelFormatEnum convertFFmpegPixelFormatToSDLPixelFormat(AVPixelFormat format);
   static int convertFFmpegSampleFormatToSDLSampleFormat(AVSampleFormat format);
   static void sdlAudioCallback(void *userdata, Uint8* stream, int len);
 
 private:
+  std::string url_;
   bool enable_video_{false};
   bool enable_audio_{false};
   AVFormatContext *format_context_;
-  // video
-  int video_stream_index_{-1};
-  AVCodecContext *video_codec_context_;
-  AVFrameQueue video_frame_queue_;
+  AVThread read_thread_{"ReadThread"};
+  AVThread audio_decode_thread_{"AudioDecodeThread"};
+  AVThread video_decode_thread_{"VideoDecodeThread"};
+  AVThread play_thread_{"PlayThread"};
+  int seq_;
+  // ForwardGeneric seq_;
+  Mutex::type read_mutex_;
+  std::condition_variable continue_read_cond_;
+
   // audio
   int audio_stream_index_{-1};
   AVCodecContext *audio_codec_context_;
+  AVPacketQueue audio_packet_queue_{kMaxAudioFrame};
+  AVFrameQueue audio_frame_queue_{kMaxAudioFrame};
+  // video
+  int video_stream_index_{-1};
+  AVCodecContext *video_codec_context_;
+  AVPacketQueue video_packet_queue_{kMaxVideoFrame};
+  AVFrameQueue video_frame_queue_{kMaxVideoFrame};
+
   SDL_AudioDeviceID audio_device_id_;
-  AVFrameQueue audio_frame_queue_;
+  std::unique_ptr<AVAudioBuffer> audio_buffer_;
+  std::shared_ptr<uint8_t> audio_buf_;
+  int audio_buf_index_;
+  int audio_buf_size_;
 
   std::shared_ptr<Resampler> resampler_;
   std::shared_ptr<Converter> converter_;
 
-  AVDecodeThread video_decode_thread_;
-  std::mutex video_mutex_;
-  std::condition_variable video_cond_;
-  AVDecodeThread audio_decode_thread_;
-  std::mutex audio_mutex_;
-  std::condition_variable audio_cond_;
-
+  bool is_finished_{false};
+  bool is_over_{false};
+  bool need2pause_{false};
   // Sync
-  // microseconds
-  int64_t video_clock_pos_;
-  int64_t audio_clock_pos_;
-  int64_t clock_pos_;
   // miliseconds
   int64_t seek_pos_;
+  bool need2seek_{false};
+  AVClock clocker_;
+  int64_t last_paused_time_{0};  // for cache
+  int audio_clock_serial_;
+  AVSyncClock audio_clock_;
+  AVSyncClock video_clock_;
+  AVSyncClock *external_clock_; // always pointer to audio_clock
 
   // SDL2
   SDL_Window *window_;
   SDL_Renderer *renderer_;
-  SDL_Texture *texture_;
-  SDL_Event event_;
 
   std::string error_;
 
-  static constexpr int kMaxAudioFrame = 1000;
-  static constexpr int kMaxVideoFrame = 500;
+  static constexpr size_t kMaxAudioFrame = 600;
+  static constexpr size_t kMaxVideoFrame = 300;
+  static constexpr size_t kMinAudioFrame = kMaxAudioFrame / 5;
+  static constexpr size_t kMinVideoFrame = kMaxVideoFrame / 5;
+  static constexpr size_t kMaxAudioBufferSize = 500 * 1000;
 };

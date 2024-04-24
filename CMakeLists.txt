@@ -46,9 +46,7 @@ endif()
 
 ######################################### Requirments Begin ########################################
 add_subdirectory("3rdparty/yaml-cpp")
-# include_directories("3rdparty/yaml-cpp/include")
 add_subdirectory("3rdparty/fmt")
-# include_directories("3rdparty/fmt/include")
 # add_subdirectory("3rdparty/googletest")
 # include_directories("3rdparty/googletest/googletest/include")
 # include_directories("3rdparty/googletest/googlemock/include")
@@ -57,12 +55,12 @@ add_subdirectory("3rdparty/fmt")
 ######################################### Library Begin ############################################
 set(FFMPEG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ffmpeg")
 
-find_package(OpenSSL COMPONENTS SSL Crypto REQUIRED)
-if (OPENSSL_FOUND)
-    add_definitions(-DENABLE_OPENSSL)
-else()
-    message(FATAL_ERROR "OpenSSL not found")
-endif()
+# find_package(OpenSSL COMPONENTS SSL Crypto REQUIRED)
+# if (OPENSSL_FOUND)
+#     add_definitions(-DENABLE_OPENSSL)
+# else()
+#     message(FATAL_ERROR "OpenSSL not found")
+# endif()
 
 if (WIN32)
     set(FFMPEG_LIBRARIES_DIR "${FFMPEG_DIR}/lib/${SYSTEM_NAME}/${CMAKE_BUILD_TYPE}")
@@ -101,28 +99,23 @@ target_link_directories(${PROJECT_NAME}
     PUBLIC
         ${FFMPEG_LIBRARIES_DIR}
 )
+
+set(COMMON_LIBS
+    fmt::fmt
+    yaml-cpp::yaml-cpp
+    ${FFMPEG_LIBRARIES}
+    SDL2
+    # OpenSSL::SSL
+    # OpenSSL::Crypto
+)
+
 if(WIN32)
-target_link_libraries(${PROJECT_NAME}
-    PUBLIC
-        fmt::fmt
-        yaml-cpp::yaml-cpp
-        OpenSSL::SSL
-        OpenSSL::Crypto
-        ${FFMPEG_LIBRARIES}
+    list(APPEND COMMON_LIBS
         D3D9.lib
-        SDL2
-)
-elseif(UNIX)
-target_link_libraries(${PROJECT_NAME}
-    PUBLIC
-        fmt::fmt
-        yaml-cpp::yaml-cpp
-        OpenSSL::SSL
-        OpenSSL::Crypto
-        ${FFMPEG_LIBRARIES}
-        SDL2
-)
+    )
 endif()
+
+target_link_libraries(${PROJECT_NAME} PUBLIC ${COMMON_LIBS})
 target_compile_features(${PROJECT_NAME}
     PUBLIC
         cxx_std_17

@@ -2,18 +2,16 @@
 
 #include "FFmpegUtil.h"
 
-class VolumeController
-{
-public:
-  // do Nothing
-  static void scale(int inChannels, AVFrame *pInframe, float volumeRatio = 1.0f)
-  {
-    for (int i = 0; i < pInframe->nb_samples; i++) {
-      for (int ch = 0; ch < inChannels; ch++) {
-        pInframe->data[ch][i] *= volumeRatio;
+class VolumeController {
+ public:
+  static void scale(int inChannels, AVFramePtr pInframe,
+                    float volumeRatio, int maxVolume) {
+    for (int ch = 0; ch < inChannels; ch++) {
+      for (int i = 0; i < pInframe->nb_samples; i++) {
+        int newVolume = pInframe->data[ch][i] * volumeRatio;
+        if (newVolume > maxVolume) newVolume = maxVolume;
+        pInframe->data[ch][i] = newVolume;
       }
     }
   }
-private:
-
 };

@@ -1,70 +1,56 @@
 #pragma once
 
-#include <condition_variable>
-#include <thread>
 #include <atomic>
-#include "FFmpegUtil.h"
-#include "libavformat/avformat.h"
+#include <condition_variable>
+#include <functional>
+#include <string>
+#include <thread>
+#include <utility>
 
-class AVThread{
-public:
-  AVThread() = default;
-  virtual ~AVThread() = default;
+#include "Mutex.h"
 
-  template <typename Fn, typename... Args>
-  void dispatch(Fn&& f, Args&&... args) {
-    thread_ = std::thread(std::forward<Fn>(f), std::forward<Args>(args)...);
-  }
-
-  virtual void run() = 0;
-
-protected:
-  std::thread thread_;
-};
-
-enum class ThreadStatus {
-  NONE,
-  READY,
-  RUNNING,
-  FINISHED,
-  ABORT,
-};
-
-class AVDecodeThread : public AVThread {
-public:
-  AVDecodeThread() : AVThread() {}
-  virtual ~AVDecodeThread() {
+class AVThread {
+ public:
+  AVThread(const std::string& name) : name_(name) {}
+  virtual ~AVThread() {
     if (thread_.joinable()) thread_.join();
   }
 
-  virtual void run() {}  // NOT IMPLEMENTED
-
-  void setFinished(bool finished) {
-    finished_ = finished;
-  }
-  bool isFinished() const {
-    return finished_;
-  }
-  void setRunning(bool running) {
-    running_ = running;
-  }
-  bool isRunning() const {
-    return running_;
+  template <typename Fn, typename... Args>
+  void dispatch(Fn&& f, Args&&... args) {
+    // callback_ = [&]{
+    //   std::forward<Fn>(f)(std::forward<Args>(args)...);
+    // };
+    // if (thread_.joinable()) thread_.join();
+    thread_ = std::thread(std::forward<Fn>(f), std::forward<Args>(args)...);
   }
 
-  void open() { running_ = true; cond_.notify_one(); }
-  void close() { running_ = false; }
+  void open() {
+    opened_ = true;
+    cond_.notify_all();
+  }
+  void close() { opened_ = false; }
+  bool isOpening() const { return opened_; }
 
-private:
-  bool finished_{false};
-  std::atomic_bool running_{false};
-  std::mutex mutex_;
+  void wait() {
+    Mutex::ulock locker(mutex_);
+    cond_.wait(locker, [this] { return isOpening(); });
+  }
+  void signal() { cond_.notify_one(); }
+
+  void join() {
+    close();
+    if (thread_.joinable()) thread_.join();
+  }
+
+  std::string name() const { return name_; }
+
+ protected:
+  std::atomic_bool opened_;
+  std::thread thread_;
+  std::string name_;
+  Mutex::type mutex_;
   std::condition_variable cond_;
+
+  // std::function<void()> callback_;
 };
-
-// class AVSDLPlayerDecodeThread : public AVDecodeThread {
-// public:
-//   void run() override {
-
-//   }
-// };

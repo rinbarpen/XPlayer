@@ -1,13 +1,8 @@
 #pragma once
 
-#include <fmt/core.h>
-
 #include <ctime>
-#include <iostream>
-#include <map>
-#include <set>
-#include <string>
-#include <vector>
+
+#include <fmt/core.h>
 
 #define LOG_DEBUG(fmt, ...) \
   log(LDEBUG, time(0), __FUNCTION__, __LINE__, fmt, ##__VA_ARGS__)
@@ -22,16 +17,22 @@
 
 enum LogLevel {
   LNONE = 0,
-  LDEBUG,
-  LINFO,
-  LWARN,
-  LERROR,
-  LFATAL,
+  LDEBUG = 1,
+  LINFO = 2,
+  LWARN = 3,
+  LERROR = 4,
+  LFATAL = 5,
+  LCLOSE = 0xFF,
 };
+static LogLevel baseLevel = LDEBUG;
 
+static void setBaseLogLevel(LogLevel level) { baseLevel = level; }
 template <typename... Args>
 static void log(LogLevel level, time_t timestamp, const char *function,
                 int line, fmt::string_view fmt, Args &&...args) {
+  if (baseLevel > level) {
+    return;
+  }
   const char *prefix;
   switch (level) {
     case LDEBUG:
@@ -60,7 +61,6 @@ static void log(LogLevel level, time_t timestamp, const char *function,
   char buffer[20]{};
   strftime(buffer, 20, "%Y-%m-%d %H:%M:%S", &tm);
   fmt::print(stdout, buffer);
-
 
   fmt::print(stdout, "\t{}:{}\t", function, line);
   fmt::print(stdout, fmt, std::move(args)...);
